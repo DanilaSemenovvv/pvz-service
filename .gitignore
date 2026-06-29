@@ -1,0 +1,7 @@
+pvz-app
+*.exe
+
+orders.json
+
+.DS_Store
+Thumbs.db
