@@ -1,16 +1,12 @@
-package main
+package handler
 
 import (
 	"encoding/json"
-	"fmt"
-	"log"
 	"net/http"
 	"strconv"
 	"time"
 
-	"github.com/DanilaSemenovvv/pvz/internal/handler"
 	"github.com/DanilaSemenovvv/pvz/internal/service"
-	"github.com/DanilaSemenovvv/pvz/internal/storage"
 )
 
 type ReturnOrderRequest struct {
@@ -29,6 +25,12 @@ type AcceptOrderRequest struct {
 
 type Handler struct {
 	services *service.OrderService
+}
+
+func NewHandler(srv *service.OrderService) *Handler {
+	return &Handler{
+		services: srv,
+	}
 }
 
 func respondJSON(w http.ResponseWriter, status int, data any) {
@@ -138,31 +140,4 @@ func (h *Handler) AcceptOrder(w http.ResponseWriter, r *http.Request) {
 
 func HandlePing(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("pong! Система ПВЗ работает!"))
-}
-
-func main() {
-	connString := "postgres://postgres:qwerty@localhost:5432/pvz_db"
-
-	db, err := storage.NewPostgresStorage(connString)
-	if err != nil {
-		log.Fatalf("Ошибка запуска БД: %v", err)
-	}
-
-	srv := service.NewOrderService(db)
-
-	h := handler.NewHandler(srv)
-
-	http.HandleFunc("GET /history", h.GetHistory)
-	http.HandleFunc("POST /acceptOrder", h.AcceptOrder)
-	http.HandleFunc("POST /returnOrder", h.ReturnOrder)
-	http.HandleFunc("POST /deliverOrder", h.DeliverOrder)
-	http.HandleFunc("GET /ping", HandlePing)
-
-	fmt.Println("Веб-сервер запущен на порту 8080...")
-
-	err = http.ListenAndServe(":8080", nil)
-
-	if err != nil {
-		log.Fatalf("Ошибка запуска сервера: %v", err)
-	}
 }
