@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/DanilaSemenovvv/pvz/models"
+	"github.com/DanilaSemenovvv/pvz/internal/models"
 )
 
 type OrderStorage interface {

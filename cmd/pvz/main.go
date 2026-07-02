@@ -8,8 +8,8 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/DanilaSemenovvv/pvz/service"
-	"github.com/DanilaSemenovvv/pvz/storage"
+	"github.com/DanilaSemenovvv/pvz/internal/service"
+	"github.com/DanilaSemenovvv/pvz/internal/storage"
 )
 
 type ReturnOrderRequest struct {

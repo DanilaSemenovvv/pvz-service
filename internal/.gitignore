@@ -1,0 +1,17 @@
+pvz-app
+*.exe
+*.exe~
+*.dil
+*.so
+*.dylib
+pvz
+
+.vscode
+.idea/
+
+.env
+
+orders.json
+
+.DS_Store
+Thumbs.db

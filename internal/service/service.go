@@ -6,8 +6,8 @@ import (
 	"sort"
 	"time"
 
-	"github.com/DanilaSemenovvv/pvz/models"
-	"github.com/DanilaSemenovvv/pvz/storage"
+	"github.com/DanilaSemenovvv/pvz/internal/models"
+	"github.com/DanilaSemenovvv/pvz/internal/storage"
 )
 
 type ActionType string
