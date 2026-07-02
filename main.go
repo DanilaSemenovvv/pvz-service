@@ -1,170 +1,169 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
+	"net/http"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/DanilaSemenovvv/pvz/service"
 	"github.com/DanilaSemenovvv/pvz/storage"
 )
 
+type ReturnOrderRequest struct {
+	ClientID  int   `json:"client_id"`
+	OrdersIDs []int `json:"order_ids"`
+}
+type DeliverOrderRequest struct {
+	ClientID  int   `json:"client_id"`
+	OrdersIDs []int `json:"order_ids"`
+}
+type AcceptOrderRequest struct {
+	OrderID         int    `json:"order_id"`
+	ClientID        int    `json:"client_id"`
+	StorageDeadline string `json:"storage_deadline"`
+}
+
+type Handler struct {
+	services *service.OrderService
+}
+
+func respondJSON(w http.ResponseWriter, status int, data any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	if data != nil {
+		json.NewEncoder(w).Encode(data)
+	}
+}
+
+func respondError(w http.ResponseWriter, status int, msg string) {
+	errorData := map[string]string{"error": msg}
+	respondJSON(w, status, errorData)
+}
+
+func (h *Handler) ReturnOrder(w http.ResponseWriter, r *http.Request) {
+	var req ReturnOrderRequest
+
+	err := json.NewDecoder(r.Body).Decode(&req)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "ошибка запроса")
+		return
+	}
+
+	err = h.services.ProcessClient(req.ClientID, req.OrdersIDs, service.ActionReturn)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "Ошибка возврата")
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]string{"msg": "Заказ возвращен"})
+}
+
+func (h *Handler) DeliverOrder(w http.ResponseWriter, r *http.Request) {
+	var req DeliverOrderRequest
+	err := json.NewDecoder(r.Body).Decode(&req)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "ошибка запроса")
+		return
+	}
+
+	err = h.services.ProcessClient(req.ClientID, req.OrdersIDs, service.ActionDeliver)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "ошибка доставки")
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]string{"msg": "Заказ доставлен"})
+}
+
+func (h *Handler) GetHistory(w http.ResponseWriter, r *http.Request) {
+	limit := 10
+	offset := 0
+
+	limitStr := r.URL.Query().Get("limit")
+	offsetStr := r.URL.Query().Get("offset")
+	if limitStr != "" {
+		parsedLimit, err := strconv.Atoi(limitStr)
+		if err != nil {
+			respondError(w, http.StatusBadRequest, "параметр limit должен быть числом")
+			return
+		}
+		limit = parsedLimit
+	}
+
+	if offsetStr != "" {
+		parsedOffset, err := strconv.Atoi(offsetStr)
+		if err != nil {
+			respondError(w, http.StatusBadRequest, "параметр offset должен быть числом")
+			return
+		}
+		offset = parsedOffset
+	}
+
+	orders, err := h.services.GetOrderHistory(limit, offset)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "Ошибка получения заказа")
+		return
+	}
+
+	respondJSON(w, http.StatusOK, orders)
+}
+
+func (h *Handler) AcceptOrder(w http.ResponseWriter, r *http.Request) {
+	var req AcceptOrderRequest
+
+	err := json.NewDecoder(r.Body).Decode(&req)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "")
+		return
+	}
+
+	storageDeadline, err := time.Parse(time.RFC3339, req.StorageDeadline)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "Ошибка формата даты!")
+		return
+	}
+
+	err = h.services.AcceptOrder(req.OrderID, req.ClientID, storageDeadline)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "Не удалось принять заказ")
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]string{"msg": "Заказ принят"})
+}
+
+func HandlePing(w http.ResponseWriter, r *http.Request) {
+	w.Write([]byte("pong! Система ПВЗ работает!"))
+}
+
 func main() {
-	db, err := storage.NewJSONStorage("orders.json")
+	connString := "postgres://postgres:qwerty@localhost:5432/pvz_db"
+
+	db, err := storage.NewPostgresStorage(connString)
 	if err != nil {
 		log.Fatalf("Ошибка запуска БД: %v", err)
 	}
 
 	srv := service.NewOrderService(db)
 
-	fmt.Println("Система ПВЗ успешно запущена! Ожидание команд...")
+	h := Handler{
+		services: srv,
+	}
 
-	var command string
+	http.HandleFunc("GET /history", h.GetHistory)
+	http.HandleFunc("POST /acceptOrder", h.AcceptOrder)
+	http.HandleFunc("POST /returnOrder", h.ReturnOrder)
+	http.HandleFunc("POST /deliverOrder", h.DeliverOrder)
+	http.HandleFunc("GET /ping", HandlePing)
 
-	for {
-		fmt.Print("\nВведите команду > ")
-		fmt.Scan(&command)
+	fmt.Println("Веб-сервер запущен на порту 8080...")
 
-		switch command {
-		case "exit":
-			fmt.Println("Завершение работы...")
-			return
-		case "accept":
-			var orderID, clientID int
-			var dateStr string
+	err = http.ListenAndServe(":8080", nil)
 
-			fmt.Print("Введите ID заказа: ")
-			fmt.Scan(&orderID)
-
-			fmt.Print("Введите ID клиента: ")
-			fmt.Scan(&clientID)
-
-			fmt.Print("Введите срок хранения (в формате YYYY-MM-DD): ")
-			fmt.Scan(&dateStr)
-
-			deadline, err := time.Parse(time.DateOnly, dateStr)
-			if err != nil {
-				fmt.Println("Ошибка: неверный формат даты. Попробуйте еще раз.")
-				continue // Прерываем текущий кейс и возвращаемся в начало цикла
-			}
-
-			err = srv.AcceptOrder(orderID, clientID, deadline)
-			if err != nil {
-				// Если бизнес-логика вернула ошибку, вежливо показываем ее оператору
-				fmt.Printf("Ошибка при принятии заказа: %v\n", err)
-			} else {
-				fmt.Println("Заказ успешно принят от курьера!")
-			}
-		case "deliver":
-			var clientID int
-			var orderIDs []int
-			var ordersInput string
-
-			fmt.Print("Введите ID клиента: ")
-			fmt.Scan(&clientID)
-
-			fmt.Print("Введите ID заказов через запятую (например: 1,2,3): ")
-			fmt.Scan(&ordersInput)
-
-			strIDs := strings.Split(ordersInput, ",")
-
-			isValid := true
-
-			for _, str := range strIDs {
-				id, err := strconv.Atoi(str)
-				if err != nil {
-					fmt.Printf("Ошибка: '%s' не является корректным числом. Повторите ввод команды.\n", str)
-					isValid = false
-					break
-				}
-				orderIDs = append(orderIDs, id)
-			}
-
-			if !isValid {
-				continue
-			}
-
-			err := srv.ProcessClient(clientID, orderIDs, service.ActionType(service.ActionDeliver))
-			if err != nil {
-				fmt.Printf("Ошибка выдачи заказа: %v\n", err)
-			}
-		case "return":
-			var clientID int
-			var orderIDs []int
-			var ordersInput string
-
-			fmt.Print("Введите ID клиента: ")
-			fmt.Scan(&clientID)
-
-			fmt.Print("Введите ID заказов через запятую (например: 1,2,3): ")
-			fmt.Scan(&ordersInput)
-
-			strIDs := strings.Split(ordersInput, ",")
-
-			isValid := true
-
-			for _, str := range strIDs {
-				id, err := strconv.Atoi(str)
-				if err != nil {
-					fmt.Printf("Ошибка: '%s' не является корректным числом. Повторите ввод команды.\n", str)
-					isValid = false
-					break
-				}
-				orderIDs = append(orderIDs, id)
-			}
-
-			if !isValid {
-				continue
-			}
-
-			err := srv.ProcessClient(clientID, orderIDs, service.ActionType(service.ActionReturn))
-			if err != nil {
-				fmt.Printf("Ошибка возврата заказа: %v\n", err)
-			}
-		case "return_to_courier":
-			var orderID int
-
-			fmt.Print("Введите ID заказа: ")
-			fmt.Scan(&orderID)
-
-			err := srv.ReturnToCourier(orderID)
-			if err != nil {
-				fmt.Printf("Ошибка возврата заказа курьеру: %v\n", err)
-			}
-		case "history":
-			var limit, page int
-			fmt.Print("Размер странницы: ")
-			fmt.Scan(&limit)
-
-			fmt.Print("Введите номер страницы: ")
-			fmt.Scan(&page)
-
-			if page < 1 {
-				page = 1
-			}
-
-			offset := (page - 1) * limit
-
-			data, err := srv.GetOrderHistory(limit, offset)
-			if err != nil {
-				fmt.Printf("Ошибка получения заказов: %v\n", err)
-			}
-
-			if len(data) == 0 {
-				fmt.Println("На этой странице нет заказов.")
-				continue
-			}
-
-			fmt.Println("\n=== ИСТОРИЯ ЗАКАЗОВ ===")
-			for _, order := range data {
-				fmt.Printf("Заказ #%d | Клиент: %d | Статус: %s | Обновлен: %s\n",
-					order.OrderID, order.ClientID, order.Status, order.UpdatedAt.Format("2006-01-02 15:04"))
-			}
-			fmt.Println("=======================")
-		default:
-			fmt.Println("Неизвестная команда. Доступные команды: accept, return_to_courier, deliver, return, history, exit")
-		}
+	if err != nil {
+		log.Fatalf("Ошибка запуска сервера: %v", err)
 	}
 }
