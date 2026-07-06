@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -10,12 +11,12 @@ import (
 )
 
 type OrderStorage interface {
-	Save(order models.Order) error
-	GetByID(id int) (models.Order, error)
-	GetByIDs(id []int) ([]models.Order, error)
-	GetAll() ([]models.Order, error)
-	Update(order models.Order) error
-	DeleteByID(id int) error
+	Save(ctx context.Context, order models.Order) error
+	GetByID(ctx context.Context, id int) (models.Order, error)
+	GetByIDs(ctx context.Context, id []int) ([]models.Order, error)
+	GetAll(ctx context.Context) ([]models.Order, error)
+	Update(ctx context.Context, order models.Order) error
+	DeleteByID(ctx context.Context, id int) error
 }
 
 type JSONStorage struct {

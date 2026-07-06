@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"sort"
@@ -27,13 +28,13 @@ func NewOrderService(st storage.OrderStorage) *OrderService {
 	}
 }
 
-func (s *OrderService) AcceptOrder(orderID int, clientID int, deadline time.Time) error {
+func (s *OrderService) AcceptOrder(ctx context.Context, orderID int, clientID int, deadline time.Time) error {
 
 	if deadline.Before(time.Now()) {
 		return errors.New("срок хранения в прошлом")
 	}
 
-	_, err := s.storage.GetByID(orderID)
+	_, err := s.storage.GetByID(ctx, orderID)
 	if err == nil {
 		return errors.New("Заказ уже существует")
 	}
@@ -46,7 +47,7 @@ func (s *OrderService) AcceptOrder(orderID int, clientID int, deadline time.Time
 		UpdatedAt:       time.Now(),
 	}
 
-	err = s.storage.Save(order)
+	err = s.storage.Save(ctx, order)
 	if err != nil {
 		return fmt.Errorf("Не удалось сохранить заказ: %w", err)
 	}
@@ -55,8 +56,8 @@ func (s *OrderService) AcceptOrder(orderID int, clientID int, deadline time.Time
 
 }
 
-func (s *OrderService) ReturnToCourier(orderID int) error {
-	order, err := s.storage.GetByID(orderID)
+func (s *OrderService) ReturnToCourier(ctx context.Context, orderID int) error {
+	order, err := s.storage.GetByID(ctx, orderID)
 	if err != nil {
 		return fmt.Errorf("Ошибка поиска заказа: %w", err)
 	}
@@ -69,7 +70,7 @@ func (s *OrderService) ReturnToCourier(orderID int) error {
 		return errors.New("Срок хранения еще не истек")
 	}
 
-	err = s.storage.DeleteByID(orderID)
+	err = s.storage.DeleteByID(ctx, orderID)
 	if err != nil {
 		return fmt.Errorf("Ошибка удаления заказа: %w", err)
 	}
@@ -77,8 +78,8 @@ func (s *OrderService) ReturnToCourier(orderID int) error {
 	return nil
 }
 
-func (s *OrderService) ProcessClient(clientID int, orderIDs []int, action ActionType) error {
-	orders, err := s.storage.GetByIDs(orderIDs)
+func (s *OrderService) ProcessClient(ctx context.Context, clientID int, orderIDs []int, action ActionType) error {
+	orders, err := s.storage.GetByIDs(ctx, orderIDs)
 	if err != nil {
 		return fmt.Errorf("Ошибка получения заказов: %w", err)
 	}
@@ -91,15 +92,15 @@ func (s *OrderService) ProcessClient(clientID int, orderIDs []int, action Action
 
 	switch action {
 	case ActionDeliver:
-		return s.deliverOrders(orders)
+		return s.deliverOrders(ctx, orders)
 	case ActionReturn:
-		return s.returnOrders(orders)
+		return s.returnOrders(ctx, orders)
 	default:
 		return errors.New("Неизвестное действие")
 	}
 }
 
-func (s *OrderService) deliverOrders(orders []models.Order) error {
+func (s *OrderService) deliverOrders(ctx context.Context, orders []models.Order) error {
 	for _, order := range orders {
 		if order.Status != models.StatusAccepted {
 			return errors.New("Заказ не принят")
@@ -115,7 +116,7 @@ func (s *OrderService) deliverOrders(orders []models.Order) error {
 		order.DeliveredAt = time.Now()
 		order.UpdatedAt = time.Now()
 
-		err := s.storage.Update(order)
+		err := s.storage.Update(ctx, order)
 		if err != nil {
 			return fmt.Errorf("Ошибка обновления состояния заказа: %w", err)
 		}
@@ -124,7 +125,7 @@ func (s *OrderService) deliverOrders(orders []models.Order) error {
 	return nil
 }
 
-func (s *OrderService) returnOrders(orders []models.Order) error {
+func (s *OrderService) returnOrders(ctx context.Context, orders []models.Order) error {
 	for _, order := range orders {
 		if order.Status != models.StatusDelivered {
 			return errors.New("Заказ еще не был выдан получателю или уже был возвращен")
@@ -138,7 +139,7 @@ func (s *OrderService) returnOrders(orders []models.Order) error {
 		order.Status = models.StatusReturnOnPvz
 		order.UpdatedAt = time.Now()
 
-		err := s.storage.Update(order)
+		err := s.storage.Update(ctx, order)
 		if err != nil {
 			return fmt.Errorf("Ошибка обновления состояния заказа: %w", err)
 		}
@@ -147,8 +148,8 @@ func (s *OrderService) returnOrders(orders []models.Order) error {
 	return nil
 }
 
-func (s *OrderService) GetOrderHistory(limit int, offset int) ([]models.Order, error) {
-	orders, err := s.storage.GetAll()
+func (s *OrderService) GetOrderHistory(ctx context.Context, limit int, offset int) ([]models.Order, error) {
+	orders, err := s.storage.GetAll(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("Ошибка получения списка заказов: %w", err)
 	}

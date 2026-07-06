@@ -53,9 +53,7 @@ func NewPostgresStorage(connString string) (*PostgresStorage, error) {
 	return &PostgresStorage{db: pool}, nil
 }
 
-func (s *PostgresStorage) Save(order models.Order) error {
-	ctx := context.Background()
-
+func (s *PostgresStorage) Save(ctx context.Context, order models.Order) error {
 	saveQuery := `
 	INSERT INTO orders (order_id, client_id, status, storage_deadline, delivered_at, updated_at) 
 	VALUES ($1, $2, $3, $4, $5, $6)
@@ -75,9 +73,7 @@ func (s *PostgresStorage) Save(order models.Order) error {
 	return nil
 }
 
-func (s *PostgresStorage) GetByID(id int) (models.Order, error) {
-	ctx := context.Background()
-
+func (s *PostgresStorage) GetByID(ctx context.Context, id int) (models.Order, error) {
 	var order models.Order
 	var statusStr string
 	var deliverAt sql.NullTime
@@ -104,9 +100,7 @@ func (s *PostgresStorage) GetByID(id int) (models.Order, error) {
 	return order, nil
 }
 
-func (s *PostgresStorage) GetAll() ([]models.Order, error) {
-	ctx := context.Background()
-
+func (s *PostgresStorage) GetAll(ctx context.Context) ([]models.Order, error) {
 	query := "SELECT order_id, client_id, status, storage_deadline, delivered_at, updated_at FROM orders"
 
 	rows, err := s.db.Query(ctx, query)
@@ -148,9 +142,7 @@ func (s *PostgresStorage) GetAll() ([]models.Order, error) {
 	return orders, nil
 }
 
-func (s *PostgresStorage) GetByIDs(ids []int) ([]models.Order, error) {
-	ctx := context.Background()
-
+func (s *PostgresStorage) GetByIDs(ctx context.Context, ids []int) ([]models.Order, error) {
 	query := "SELECT order_id, client_id, status, storage_deadline, delivered_at, updated_at FROM orders WHERE order_id = ANY($1)"
 
 	rows, err := s.db.Query(ctx, query, ids)
@@ -192,9 +184,7 @@ func (s *PostgresStorage) GetByIDs(ids []int) ([]models.Order, error) {
 	return orders, nil
 }
 
-func (s *PostgresStorage) Update(order models.Order) error {
-	ctx := context.Background()
-
+func (s *PostgresStorage) Update(ctx context.Context, order models.Order) error {
 	updateQuery := "UPDATE orders SET status = $1, delivered_at = $2, updated_at = $3 WHERE order_id = $4"
 
 	_, err := s.db.Exec(ctx, updateQuery,
@@ -209,9 +199,7 @@ func (s *PostgresStorage) Update(order models.Order) error {
 	return nil
 }
 
-func (s *PostgresStorage) DeleteByID(id int) error {
-	ctx := context.Background()
-
+func (s *PostgresStorage) DeleteByID(ctx context.Context, id int) error {
 	deleteQuery := "DELETE FROM orders WHER order_id = $1"
 
 	_, err := s.db.Exec(ctx, deleteQuery, id)
