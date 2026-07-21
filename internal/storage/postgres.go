@@ -200,7 +200,7 @@ func (s *PostgresStorage) Update(ctx context.Context, order models.Order) error 
 }
 
 func (s *PostgresStorage) DeleteByID(ctx context.Context, id int) error {
-	deleteQuery := "DELETE FROM orders WHER order_id = $1"
+	deleteQuery := "DELETE FROM orders WHERE order_id = $1"
 
 	_, err := s.db.Exec(ctx, deleteQuery, id)
 	if err != nil {
@@ -208,4 +208,8 @@ func (s *PostgresStorage) DeleteByID(ctx context.Context, id int) error {
 	}
 
 	return nil
+}
+
+func (s *PostgresStorage) Close() {
+	s.db.Close()
 }

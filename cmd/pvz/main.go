@@ -1,23 +1,19 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"log"
-	"net/http"
+	"net"
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
-	"github.com/DanilaSemenovvv/pvz/internal/handler"
+	"github.com/DanilaSemenovvv/pvz/internal/mygrpc"
 	"github.com/DanilaSemenovvv/pvz/internal/service"
 	"github.com/DanilaSemenovvv/pvz/internal/storage"
+	desc "github.com/DanilaSemenovvv/pvz/pkg/api/pvz/v1"
+	"google.golang.org/grpc"
 )
-
-func HandlePing(w http.ResponseWriter, r *http.Request) {
-	w.Write([]byte("pong! Система ПВЗ работает!"))
-}
 
 func main() {
 	connString := "postgres://postgres:qwerty@localhost:5432/pvz_db"
@@ -29,23 +25,19 @@ func main() {
 
 	orderSrv := service.NewOrderService(db)
 
-	h := handler.NewHandler(orderSrv)
-
-	http.HandleFunc("GET /history", h.GetHistory)
-	http.HandleFunc("POST /acceptOrder", h.AcceptOrder)
-	http.HandleFunc("POST /returnOrder", h.ReturnOrder)
-	http.HandleFunc("POST /deliverOrder", h.DeliverOrder)
-	http.HandleFunc("GET /ping", HandlePing)
-
-	fmt.Println("Веб-сервер запущен на порту 8080...")
-
-	server := &http.Server{
-		Addr: ":8080",
+	listener, err := net.Listen("tcp", ":50051")
+	if err != nil {
+		log.Fatalf("Ошибка TCP: %v", err)
 	}
 
+	grpcServer := grpc.NewServer()
+
+	pvzGrpcHandler := mygrpc.NewServer(orderSrv)
+
+	desc.RegisterPVZServiceServer(grpcServer, pvzGrpcHandler)
 	go func() {
-		err := server.ListenAndServe()
-		if err != http.ErrServerClosed {
+		fmt.Println("gRPC сервер запущен на порту 50051...")
+		if err := grpcServer.Serve(listener); err != nil {
 			log.Fatalf("Ошибка работы сервера: %v", err)
 		}
 	}()
@@ -56,16 +48,10 @@ func main() {
 
 	<-stopCh
 
-	fmt.Println("Начинается плавная остановка сервера...")
+	log.Println("Получен сигнал ОС, начинаем плавную остановку сервера...")
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	grpcServer.GracefulStop()
 
-	defer cancel()
-
-	if err = server.Shutdown(ctx); err != nil {
-		log.Printf("Сервер принудительно остановлен из-за ошибки: %v", err)
-	} else {
-		fmt.Println("Сервер успешно и плавно остановлен.")
-	}
+	db.Close()
 
 }
